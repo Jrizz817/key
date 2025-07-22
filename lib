@@ -1,0 +1,381 @@
+--!strict
+
+local CoreGui = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+
+local TuxHubLibrary = {}
+
+-- Configurações padrão
+local defaultConfig = {
+    title = "Tux Hub",
+    size = UDim2.new(0, 370, 0, 260),
+    position = UDim2.new(0.5, 0, 0.5, 0),
+    draggable = true,
+    minimizable = true
+}
+
+function TuxHubLibrary:CreateWindow(config)
+    config = config or {}
+    for key, value in pairs(defaultConfig) do
+        if config[key] == nil then
+            config[key] = value
+        end
+    end
+
+    local window = {}
+    local allItems = {}
+    local toggleStates = {}
+    local ITEMS_PER_PAGE = 4
+    local currentPage = 1
+
+    -- Criar mini botão
+    local miniBtnGui = Instance.new("ScreenGui")
+    miniBtnGui.Name = "TuxHubMiniBtn"
+    miniBtnGui.Parent = CoreGui
+    miniBtnGui.ResetOnSpawn = false
+    miniBtnGui.Enabled = true
+
+    local miniBtn = Instance.new("TextButton", miniBtnGui)
+    miniBtn.Name = "MiniBtn"
+    miniBtn.Size = UDim2.new(0, 56, 0, 56)
+    miniBtn.Position = UDim2.new(0.5, -28, 0.48, -28)
+    miniBtn.BackgroundColor3 = Color3.fromRGB(60, 80, 120)
+    miniBtn.BorderSizePixel = 0
+    miniBtn.Text = ""
+    miniBtn.AutoButtonColor = false
+
+    local btnCorner = Instance.new("UICorner", miniBtn)
+    btnCorner.CornerRadius = UDim.new(1, 0)
+
+    local btnStroke = Instance.new("UIStroke", miniBtn)
+    btnStroke.Thickness = 2
+    btnStroke.Color = Color3.fromRGB(110, 200, 255)
+
+    local decal = Instance.new("ImageLabel", miniBtn)
+    decal.BackgroundTransparency = 1
+    decal.Size = UDim2.new(1, -8, 1, -8)
+    decal.Position = UDim2.new(0, 4, 0, 4)
+    decal.Image = "rbxassetid://138110497553919"
+    decal.ImageColor3 = Color3.fromRGB(110, 200, 255)
+
+    -- Sistema de drag
+    local function makeDraggable(frame)
+        local drag, startPos, startGui
+        frame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                drag = true
+                startPos = frame.Position
+                startGui = input.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        drag = false
+                    end
+                end)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if drag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                frame.Position = startPos + UDim2.new(0, input.Position.X - startGui.X, 0, input.Position.Y - startGui.Y)
+            end
+        end)
+    end
+
+    makeDraggable(miniBtn)
+
+    -- Criar GUI principal
+    local screenGui = Instance.new("ScreenGui", CoreGui)
+    screenGui.Name = config.title or "TuxHub"
+    screenGui.ResetOnSpawn = false
+    screenGui.Enabled = false
+
+    local main = Instance.new("Frame", screenGui)
+    main.Name = "Main"
+    main.Size = config.size
+    main.Position = config.position
+    main.AnchorPoint = Vector2.new(0.5, 0.5)
+    main.BackgroundColor3 = Color3.fromRGB(28, 32, 52)
+    main.BorderSizePixel = 0
+    main.BackgroundTransparency = 0.06
+    main.ClipsDescendants = true
+
+    local mainCorner = Instance.new("UICorner", main)
+    mainCorner.CornerRadius = UDim.new(0, 16)
+
+    local mainGradient = Instance.new("UIGradient", main)
+    mainGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(36, 46, 80)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(52, 72, 124))
+    }
+
+    local mainStroke = Instance.new("UIStroke", main)
+    mainStroke.Color = Color3.fromRGB(110, 200, 255)
+    mainStroke.Thickness = 2
+
+    -- Barra de título
+    local titleBar = Instance.new("Frame", main)
+    titleBar.Size = UDim2.new(1, 0, 0, 42)
+    titleBar.BackgroundColor3 = Color3.fromRGB(22, 28, 46)
+    titleBar.BackgroundTransparency = 0.08
+    titleBar.BorderSizePixel = 0
+    Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 16)
+
+    local barGradient = Instance.new("UIGradient", titleBar)
+    barGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(41, 56, 85)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(24, 28, 48))
+    }
+
+    local title = Instance.new("TextLabel", titleBar)
+    title.Size = UDim2.new(1, -12, 1, 0)
+    title.Position = UDim2.new(0, 12, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = config.title
+    title.Font = Enum.Font.GothamBlack
+    title.TextSize = 26
+    title.TextColor3 = Color3.fromRGB(110, 200, 255)
+    title.TextStrokeTransparency = 0.7
+    title.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- Sistema de drag para janela
+    if config.draggable then
+        makeDraggable(main)
+    end
+
+    -- Toggle do mini botão
+    miniBtn.MouseButton1Click:Connect(function()
+        screenGui.Enabled = not screenGui.Enabled
+    end)
+
+    -- Funções de página
+    local function clearPageItems()
+        for _, v in pairs(main:GetChildren()) do
+            if v:IsA("TextButton") and not v.Name:match("^PageBtn") then
+                v:Destroy()
+            elseif v:IsA("Frame") and (v.Name:match("^Category_") or v.Name == "CategorySpacer") then
+                v:Destroy()
+            end
+        end
+    end
+
+    local function showPage(page)
+        clearPageItems()
+        local startIdx = (page - 1) * ITEMS_PER_PAGE + 1
+        local endIdx = math.min(#allItems, page * ITEMS_PER_PAGE)
+        local yStart = 54
+        
+        for idx = startIdx, endIdx do
+            local entry = allItems[idx]
+            
+            if entry.type == "category" then
+                -- Criar frame da categoria
+                local categoryFrame = Instance.new("Frame", main)
+                categoryFrame.Name = "Category_" .. entry.Name
+                categoryFrame.Size = UDim2.new(0.9, 0, 0, 30)
+                categoryFrame.Position = UDim2.new(0.05, 0, 0, yStart)
+                categoryFrame.BackgroundColor3 = Color3.fromRGB(45, 55, 85)
+                categoryFrame.BorderSizePixel = 0
+                
+                local categoryCorner = Instance.new("UICorner", categoryFrame)
+                categoryCorner.CornerRadius = UDim.new(0, 8)
+                
+                local categoryLabel = Instance.new("TextLabel", categoryFrame)
+                categoryLabel.Size = UDim2.new(1, -10, 1, 0)
+                categoryLabel.Position = UDim2.new(0, 10, 0, 0)
+                categoryLabel.BackgroundTransparency = 1
+                categoryLabel.Text = "📁 " .. entry.Name
+                categoryLabel.Font = Enum.Font.GothamBold
+                categoryLabel.TextSize = 16
+                categoryLabel.TextColor3 = Color3.fromRGB(150, 180, 255)
+                categoryLabel.TextXAlignment = Enum.TextXAlignment.Left
+                
+                yStart = yStart + 38
+                
+            elseif entry.type == "toggle" then
+                local enabled = toggleStates[entry.Name]
+                if enabled == nil then
+                    enabled = entry.Default or false
+                    toggleStates[entry.Name] = enabled
+                end
+                
+                local btn = Instance.new("TextButton", main)
+                btn.Name = entry.Name
+                btn.Text = (enabled and "ON  | " or "OFF | ") .. entry.Name
+                btn.Font = Enum.Font.GothamMedium
+                btn.TextSize = 16
+                btn.TextColor3 = enabled and Color3.fromRGB(80, 255, 120) or Color3.fromRGB(255, 100, 100)
+                btn.BackgroundColor3 = enabled and Color3.fromRGB(36, 56, 46) or Color3.fromRGB(56, 36, 36)
+                btn.Size = UDim2.new(0.82, 0, 0, 34)
+                btn.Position = UDim2.new(0.09, 0, 0, yStart)
+                btn.AutoButtonColor = true
+                
+                local bCorner = Instance.new("UICorner", btn)
+                bCorner.CornerRadius = UDim.new(0, 10)
+                
+                local bStroke = Instance.new("UIStroke", btn)
+                bStroke.Color = Color3.fromRGB(110, 200, 255)
+                bStroke.Thickness = 1.2
+                
+                btn.MouseEnter:Connect(function()
+                    btn.BackgroundColor3 = Color3.fromRGB(66, 86, 126)
+                end)
+                
+                btn.MouseLeave:Connect(function()
+                    btn.BackgroundColor3 = enabled and Color3.fromRGB(36, 56, 46) or Color3.fromRGB(56, 36, 36)
+                end)
+                
+                local function update(vv)
+                    enabled = vv
+                    toggleStates[entry.Name] = vv
+                    btn.TextColor3 = vv and Color3.fromRGB(80, 255, 120) or Color3.fromRGB(255, 100, 100)
+                    btn.BackgroundColor3 = vv and Color3.fromRGB(36, 56, 46) or Color3.fromRGB(56, 36, 36)
+                    btn.Text = (vv and "ON  | " or "OFF | ") .. entry.Name
+                    if entry.Callback then
+                        entry.Callback(vv, btn)
+                    end
+                end
+                
+                btn.MouseButton1Click:Connect(function()
+                    update(not enabled)
+                end)
+                
+                yStart = yStart + 44
+                
+            elseif entry.type == "button" then
+                local btn = Instance.new("TextButton", main)
+                btn.Name = entry.Name
+                btn.Text = entry.Name
+                btn.Font = Enum.Font.GothamMedium
+                btn.TextSize = 16
+                btn.TextColor3 = Color3.fromRGB(110, 200, 255)
+                btn.BackgroundColor3 = Color3.fromRGB(36, 46, 86)
+                btn.Size = UDim2.new(0.82, 0, 0, 34)
+                btn.Position = UDim2.new(0.09, 0, 0, yStart)
+                btn.AutoButtonColor = true
+                
+                local bCorner = Instance.new("UICorner", btn)
+                bCorner.CornerRadius = UDim.new(0, 10)
+                
+                local bStroke = Instance.new("UIStroke", btn)
+                bStroke.Color = Color3.fromRGB(65, 130, 255)
+                bStroke.Thickness = 1.2
+                
+                btn.MouseEnter:Connect(function()
+                    btn.BackgroundColor3 = Color3.fromRGB(46, 86, 156)
+                end)
+                
+                btn.MouseLeave:Connect(function()
+                    btn.BackgroundColor3 = Color3.fromRGB(36, 46, 86)
+                end)
+                
+                btn.MouseButton1Click:Connect(function()
+                    if entry.Callback then
+                        entry.Callback()
+                    end
+                end)
+                
+                yStart = yStart + 44
+            end
+        end
+    end
+
+    local function makePaginationButtons()
+        for _, v in pairs(main:GetChildren()) do
+            if v:IsA("TextButton") and v.Name:match("^PageBtn") then
+                v:Destroy()
+            end
+        end
+        
+        local maxPage = math.ceil(#allItems / ITEMS_PER_PAGE)
+        if maxPage > 1 then
+            for i = 1, maxPage do
+                local btn = Instance.new("TextButton", main)
+                btn.Name = "PageBtn" .. i
+                btn.Text = tostring(i)
+                btn.Font = Enum.Font.GothamBlack
+                btn.TextSize = 17
+                btn.TextColor3 = i == currentPage and Color3.fromRGB(110, 200, 255) or Color3.fromRGB(180, 180, 220)
+                btn.BackgroundColor3 = i == currentPage and Color3.fromRGB(36, 56, 106) or Color3.fromRGB(44, 44, 66)
+                btn.Size = UDim2.new(0, 30, 0, 30)
+                btn.Position = UDim2.new(0, 56 + (i - 1) * 36, 0, main.AbsoluteSize.Y - 38)
+                btn.AutoButtonColor = true
+                
+                local bCorner = Instance.new("UICorner", btn)
+                bCorner.CornerRadius = UDim.new(0, 8)
+                
+                btn.MouseButton1Click:Connect(function()
+                    currentPage = i
+                    makePaginationButtons()
+                    showPage(currentPage)
+                end)
+            end
+        end
+    end
+
+    -- Métodos da janela
+    function window:AddCategory(name)
+        local category = {
+            type = "category",
+            Name = name or "Category",
+            items = {}
+        }
+        
+        table.insert(allItems, category)
+        makePaginationButtons()
+        showPage(currentPage)
+        
+        return category
+    end
+
+    function window:AddToggle(options)
+        local toggle = {
+            type = "toggle",
+            Name = options.Name or "Toggle",
+            Default = options.Default or false,
+            Callback = options.Callback or function() end
+        }
+        table.insert(allItems, toggle)
+        makePaginationButtons()
+        showPage(currentPage)
+        return toggle
+    end
+
+    function window:AddButton(options)
+        local button = {
+            type = "button",
+            Name = options.Name or "Button",
+            Callback = options.Callback or function() end
+        }
+        table.insert(allItems, button)
+        makePaginationButtons()
+        showPage(currentPage)
+        return button
+    end
+
+    function window:Show()
+        screenGui.Enabled = true
+    end
+
+    function window:Hide()
+        screenGui.Enabled = false
+    end
+
+    function window:Destroy()
+        if screenGui then
+            screenGui:Destroy()
+        end
+        if miniBtnGui then
+            miniBtnGui:Destroy()
+        end
+    end
+
+    -- Inicializar
+    makePaginationButtons()
+    showPage(currentPage)
+
+    return window
+end
+
+return TuxHubLibrary
